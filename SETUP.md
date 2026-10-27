@@ -63,9 +63,9 @@ If deployment says Pages is not enabled, finish step 4 and rerun the workflow. I
 ## 5. Connect each device — once per browser
 
 1. In Supabase, copy the **Project URL** from the project's **Connect** dialog or **Settings → Data API**.
-2. Open **Settings → API Keys** and copy the **Publishable key**, beginning with `sb_publishable_`. Create a publishable key there if one has not been generated yet.
+2. Open **Settings → API Keys** and copy the **Publishable key**, beginning with `sb_publishable_`. Create a publishable key there if one has not been generated yet. If the dashboard shows only legacy keys, the public **anon** key (beginning `eyJ`) is also supported; never use the **service_role** key.
 3. Open your planner website, paste the Project URL and Publishable key into the two fields, and click **Connect planner**.
-4. Sign in with that person's planner email and password.
+4. You should now see **Step 2 of 2** with email and password boxes. Sign in with that person's planner email and password. If you stay on Step 1, read the highlighted message above the fields and correct the indicated detail.
 5. Choose **Change password** at the bottom to replace their temporary password.
 6. Repeat on the other device using the **same URL and publishable key**, but the other person's login.
 

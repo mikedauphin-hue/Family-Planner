@@ -51,20 +51,58 @@ function applyRows(values) {
 function header() {
   return `<header><a class="brand" href="./"><span class="brand-icon">▦</span><span data-copy="brand">${esc(copy('brand'))}</span><span class="brand-dot">.</span></a><span class="header-note">A little planning. More time together.</span></header>`;
 }
+function isPublicKey(key) {
+  if (/^sb_publishable_[A-Za-z0-9_-]+$/.test(key)) return true;
+  // Legacy anon JWTs are public browser keys too; never accept service_role keys.
+  try {
+    const parts = key.split('.');
+    if (parts.length !== 3) return false;
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload)).role === 'anon';
+  } catch { return false; }
+}
+function connectionError(message, fieldId) {
+  const messageElement = document.querySelector('#auth-message');
+  messageElement.textContent = message;
+  messageElement.classList.add('connection-error');
+  if (fieldId) document.querySelector(fieldId).focus();
+  messageElement.scrollIntoView?.({ block: 'nearest' });
+}
 function gate(message = '') {
-  app.innerHTML = `<div class="shell">${header()}<main class="welcome"><div class="eyebrow">ONE WEEK. TWO PEOPLE.</div><h1>Our week, together<span>.</span></h1><p>Your schedules, rides, and dinners, shared across devices.</p><section class="connection-card"><h2>${config ? 'Sign in to your planner' : 'Connect your shared planner'}</h2><p>${config ? 'Use the email and password your planner owner created for you. Both people connect to the same Supabase project.' : 'First-time setup? Follow SETUP.md in the GitHub repository. Enter the same project details on each device.'}</p>${config ? `<form id="auth"><label>Email<input id="email" type="email" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label><div class="dialog-actions"><button class="primary" type="submit">Sign in</button></div></form><button id="change-project" class="text-button">Change project connection</button>` : `<form id="connect"><label>Supabase project URL<input id="project-url" type="url" placeholder="https://your-project.supabase.co" required></label><label>Publishable key<input id="public-key" type="text" autocomplete="off" placeholder="sb_publishable_…" required></label><p>Use the public publishable key. Never enter a secret or service_role key.</p><button class="primary" type="submit">Connect planner</button></form>`}<p id="auth-message" role="status">${esc(message)}</p></section><p class="privacy-note">Only the two approved accounts can access your planner. Your old local planner is kept separately on this device.</p></main></div>`;
+  app.innerHTML = `<div class="shell">${header()}<main class="welcome"><div class="eyebrow">ONE WEEK. TWO PEOPLE.</div><h1>Our week, together<span>.</span></h1><p>Your schedules, rides, and dinners, shared across devices.</p><section class="connection-card"><div class="eyebrow">STEP ${config ? '2' : '1'} OF 2</div><h2>${config ? 'Sign in to your planner' : 'Connect your shared planner'}</h2><p>${config ? 'Use the email and password your planner owner created for you. Both people connect to the same Supabase project.' : 'First-time setup? Follow SETUP.md in the GitHub repository. Enter the same project details on each device.'}</p><p id="auth-message" role="alert">${esc(message)}</p>${config ? `<form id="auth"><label>Email<input id="email" type="email" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label><div class="dialog-actions"><button class="primary" type="submit">Sign in</button></div></form><button id="change-project" class="text-button">Change project connection</button>` : `<form id="connect" novalidate><label>Supabase project URL<input id="project-url" type="url" placeholder="https://your-project.supabase.co" required></label><label>Publishable key or legacy anon key<input id="public-key" type="text" autocomplete="off" placeholder="sb_publishable_…" required></label><p>Paste your public publishable key (sb_publishable_…) or legacy anon key (eyJ…). Never enter a secret or service_role key.</p><button class="primary" type="submit">Connect planner</button></form>`}</section><p class="privacy-note">Only the two approved accounts can access your planner. Your old local planner is kept separately on this device.</p></main></div>`;
   if (!config) {
     document.querySelector('#connect').onsubmit = e => {
       e.preventDefault();
+      const rawUrl = document.querySelector('#project-url').value.trim();
+      const key = document.querySelector('#public-key').value.trim();
+      let url;
+      try { url = new URL(rawUrl); } catch {
+        connectionError('Enter your full Project URL, starting with https://, from Supabase → Settings → Data API.', '#project-url');
+        return;
+      }
+      if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname) || url.pathname !== '/' || url.search || url.hash || url.port || url.username || url.password) {
+        connectionError('Use only the Project URL: https://your-project.supabase.co — without /rest/v1 or other text.', '#project-url');
+        return;
+      }
+      if (!isPublicKey(key)) {
+        connectionError('Paste the complete publishable key (starts sb_publishable_) or legacy anon public key (starts eyJ) from Supabase → Settings → API Keys. Secret and service_role keys cannot be used here.', '#public-key');
+        return;
+      }
       try {
-        const url = new URL(document.querySelector('#project-url').value.trim());
-        const key = document.querySelector('#public-key').value.trim();
-        if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.supabase\.co$/.test(url.hostname) || url.pathname !== '/' || url.search || url.hash || url.port || url.username || url.password) throw new Error('Use your Supabase project URL: https://your-project.supabase.co');
-        if (!key.startsWith('sb_publishable_')) throw new Error('Use the publishable key from Supabase → Settings → API Keys. Secret keys must never go in the app.');
-        config = { url: url.origin, key };
-        localStorage.setItem('family-cloud-config', JSON.stringify(config));
-        initialize();
-      } catch (error) { document.querySelector('#auth-message').textContent = error.message; }
+        const nextConfig = { url: url.origin, key };
+        const nextClient = createClient(nextConfig.url, nextConfig.key);
+        try { localStorage.setItem('family-cloud-config', JSON.stringify(nextConfig)); } catch {
+          connectionError('Your browser could not save the connection. Allow site storage for this website, then try again.');
+          return;
+        }
+        config = nextConfig;
+        initialize(nextClient);
+        document.querySelector('#auth-message').textContent = 'Project details saved. Now sign in with the email and password created in Supabase.';
+        document.querySelector('#email').focus();
+      } catch {
+        config = null;
+        gate('The planner could not initialize the connection. Check your project details and try again, or refresh the page.');
+      }
     };
     return;
   }
@@ -81,10 +119,11 @@ function gate(message = '') {
     try {
       const { error } = await client.auth.signInWithPassword(credentials);
       if (error) throw error;
-    } catch (error) { document.querySelector('#auth-message').textContent = error.message; }
+    } catch (error) { connectionError(error.message); }
     finally { buttons.forEach(b => b.disabled = false); }
   };
   document.querySelector('#auth').onsubmit = e => { e.preventDefault(); auth(); };
+  document.querySelector('#email').focus();
 }
 function input(day, field, person, placeholder, label, textarea = false) {
   const id = rowId(day, field, person);
@@ -171,7 +210,7 @@ async function startSession(nextSession) {
   engine?.stop(); clearInterval(poll); clearTimeout(saveTimer);
   session = nextSession;
   rows = new Map();
-  if (!session) { gate(); return; }
+  if (!session) { gate(config ? 'Project details saved. Sign in below with your planner email and password.' : ''); return; }
   setStatus('Connecting to shared planner…');
   // Membership is checked before rendering editable fields. RLS independently checks every request.
   const { data, error } = await client.from('planner_members').select('user_id').eq('user_id', session.user.id);
@@ -202,9 +241,15 @@ async function startSession(nextSession) {
   await engine.tick();
   if (version === sessionVersion) poll = setInterval(() => engine.tick(), 4000);
 }
-function initialize() {
+function initialize(preparedClient) {
   if (!config) { gate(); return; }
-  client = createClient(config.url, config.key);
+  try {
+    client = preparedClient || createClient(config.url, config.key);
+  } catch {
+    config = null;
+    gate('The saved connection could not be opened. Please enter your project details again.');
+    return;
+  }
   gate();
   client.auth.onAuthStateChange((event, nextSession) => {
     // Supabase auth callbacks must finish before other Supabase requests start.
