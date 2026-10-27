@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 const db = new PGlite();
 const ids = ['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'];
-await db.exec(`create role anon; create role authenticated; create schema auth;
+await db.exec(`create role anon; create role authenticated; create role service_role bypassrls; create schema auth;
 create table auth.users(id uuid primary key, email text, email_confirmed_at timestamptz);
 create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant usage on schema auth to authenticated, anon;
@@ -33,4 +33,25 @@ await assert.rejects(db.query('select * from planner_entries'), /permission deni
 await db.exec('reset role');
 assert.equal((await db.query('select value from planner_entries')).rows[0].value,'Pizza');
 console.log('PASS: SQL rollback on incomplete setup; repeatable setup; both approved members can share; third account and anonymous clients denied; clients cannot change membership.');
+const notifications = readFileSync(new URL('../supabase/notifications.sql', import.meta.url),'utf8');
+await db.exec(notifications); await db.exec(notifications);
+const subId = '44444444-4444-4444-8444-444444444444';
+await db.query('insert into planner_push_subscriptions(id,user_id,endpoint,subscription) values ($1,$2,$3,$4)',[subId,ids[0],'https://web.push.apple.com/test','{}']);
+for (const role of ['anon','authenticated']) {
+  await db.exec(`set role ${role}`);
+  await assert.rejects(db.query('select * from planner_push_subscriptions'), /permission denied/);
+  await assert.rejects(db.query('select * from planner_notification_deliveries'), /permission denied/);
+  await assert.rejects(db.query('select claim_planner_notification($1,$2)',[subId,'2026-10-28']), /permission denied/);
+  await db.exec('reset role');
+}
+await db.exec('set role service_role');
+const claim = async () => (await db.query('select claim_planner_notification($1,$2) as claimed',[subId,'2026-10-28'])).rows[0].claimed;
+assert.equal(await claim(),true);
+assert.equal(await claim(),false);
+await db.query("update planner_notification_deliveries set claimed_at = now() - interval '3 minutes'");
+assert.equal(await claim(),true);
+await db.query('update planner_notification_deliveries set sent_at=now()');
+assert.equal(await claim(),false);
+await db.exec('reset role');
+console.log('PASS: push endpoints are server-only; clients cannot claim deliveries; repeated cron calls deduplicate, expired leases retry, accepted deliveries stay sent.');
 await db.close();

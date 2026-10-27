@@ -1,0 +1,16 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Planner notification keys</title><style>body{font:16px system-ui;max-width:700px;margin:40px auto;padding:20px;color:#352a40;background:#f8f5fa}button{background:#7536ac;color:white;border:0;border-radius:6px;padding:12px;font:inherit;cursor:pointer}label{display:block;margin-top:24px}textarea{display:block;width:100%;box-sizing:border-box;margin-top:8px;padding:10px;resize:vertical}p{line-height:1.6}.private{color:#943b23}</style></head><body><h1>Notification setup keys</h1><p>Owner setup only. These values are generated entirely in this browser and are not sent anywhere by this page. Store them in your password manager and Supabase secrets as described in NOTIFICATIONS.md. Do not post private values in GitHub or chat.</p><p>Generate once, then keep the same keys. Replacing them later requires re-enabling notifications on every device.</p><button id="generate">Generate keys</button><p id="status" role="status"></p><div id="keys" hidden><label>VAPID_PUBLIC_KEY (public)<textarea id="public" readonly></textarea></label><label class="private">VAPID_PRIVATE_KEY (private)<textarea id="private" readonly></textarea></label><label class="private">PLANNER_CRON_SECRET (private)<textarea id="cron" readonly></textarea></label><p>These values disappear when you close or refresh this page. Save them securely first.</p></div><script type="module">
+const base64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+document.querySelector('#generate').onclick = async () => {
+  if (!document.querySelector('#keys').hidden && !confirm('Generate replacement keys? Save your existing keys first.')) return;
+  try {
+    const pair = await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+    const pub = await crypto.subtle.exportKey('raw',pair.publicKey);
+    const priv = await crypto.subtle.exportKey('jwk',pair.privateKey);
+    document.querySelector('#public').value=base64url(new Uint8Array(pub));
+    document.querySelector('#private').value=priv.d;
+    document.querySelector('#cron').value=base64url(crypto.getRandomValues(new Uint8Array(32)));
+    document.querySelector('#keys').hidden=false;
+    document.querySelector('#status').textContent='Generated locally. Copy these values into Supabase secrets, not into your repository.';
+  } catch { document.querySelector('#status').textContent='Could not generate keys. Open this page over HTTPS in a current browser.'; }
+};
+</script></body></html>

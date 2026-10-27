@@ -1,6 +1,7 @@
 import './style.css';
 import { createClient } from '@supabase/supabase-js';
 import { SyncEngine } from './sync-engine.js';
+import { mountNotificationControls, disableDeviceNotifications } from './notifications.js';
 
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -8,6 +9,12 @@ const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')
 let monday = new Date();
 monday.setHours(0, 0, 0, 0);
 monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+const requestedWeek = new URLSearchParams(location.search).get('week');
+if (/^\d{4}-\d{2}-\d{2}$/.test(requestedWeek || '')) {
+  const [year, month, day] = requestedWeek.split('-').map(Number);
+  const requested = new Date(year, month - 1, day);
+  if (iso(requested) === requestedWeek && requested.getDay() === 1) monday = requested;
+}
 let config;
 try { config = JSON.parse(localStorage.getItem('family-cloud-config')); } catch {}
 let client, session, engine, poll, saveTimer;
@@ -133,16 +140,17 @@ function input(day, field, person, placeholder, label, textarea = false) {
 function render() {
   const end = new Date(monday); end.setDate(end.getDate() + 6);
   const fmt = { month: 'short', day: 'numeric' };
-  app.innerHTML = `<div class="shell">${header()}<main><section class="intro"><div><div class="eyebrow">THE SHARED FAMILY PLANNER</div><h1 data-copy="heading">${esc(copy('heading'))}</h1><p data-copy="tagline">${esc(copy('tagline'))}</p></div><div class="intro-actions"><button class="secondary" id="customize">Customize planner</button><button class="print secondary" id="print">↗ Print week</button></div></section><section class="toolbar"><div class="week-nav"><button id="prev" aria-label="Previous week">‹</button><div><span class="small-label">WEEK OF</span><h2>${monday.toLocaleDateString('en-US', fmt)} – ${end.toLocaleDateString('en-US', fmt)}<span class="year">, ${end.getFullYear()}</span></h2></div><button id="next" aria-label="Next week">›</button><button class="today" id="today">This week</button></div><button class="secondary" id="members">♧ Edit names</button></section><div class="family-strip"><span class="small-label">OUR CREW</span>${names().map((name, i) => `<span class="person"><i class="dot color${i}"></i><span data-name="${i}">${esc(name)}</span></span>`).join('')}<span class="hint">Changes sync automatically</span></div><section class="week-grid">${days.map((day, i) => {
+  app.innerHTML = `<div class="shell">${header()}<main><section class="intro"><div><div class="eyebrow">THE SHARED FAMILY PLANNER</div><h1 data-copy="heading">${esc(copy('heading'))}</h1><p data-copy="tagline">${esc(copy('tagline'))}</p></div><div class="intro-actions"><button class="secondary" id="notifications">Notifications</button><button class="secondary" id="customize">Customize planner</button><button class="print secondary" id="print">↗ Print week</button></div></section><section class="toolbar"><div class="week-nav"><button id="prev" aria-label="Previous week">‹</button><div><span class="small-label">WEEK OF</span><h2>${monday.toLocaleDateString('en-US', fmt)} – ${end.toLocaleDateString('en-US', fmt)}<span class="year">, ${end.getFullYear()}</span></h2></div><button id="next" aria-label="Next week">›</button><button class="today" id="today">This week</button></div><button class="secondary" id="members">♧ Edit names</button></section><div class="family-strip"><span class="small-label">OUR CREW</span>${names().map((name, i) => `<span class="person"><i class="dot color${i}"></i><span data-name="${i}">${esc(name)}</span></span>`).join('')}<span class="hint">Changes sync automatically</span></div><section class="week-grid">${days.map((day, i) => {
     const date = new Date(monday); date.setDate(date.getDate() + i);
     const today = iso(date) === iso(new Date());
     return `<article class="day ${i > 4 ? 'weekend' : ''} ${today ? 'is-today' : ''}"><div class="day-title"><h3>${day}</h3><span class="date">${date.getDate()}</span></div>${today ? '<span class="today-tag">TODAY</span>' : ''}<div class="schedules">${names().map((name, j) => `<label class="schedule"><span><i class="dot color${j}"></i><span data-name="${j}">${esc(name)}</span></span>${input(i, 'schedule', j, 'Add a plan…', `${name} schedule for ${day}`, true)}</label>`).join('')}</div><div class="rides"><label><span>↗ DROP-OFF</span>${input(i, 'dropoff', undefined, "Who's driving?", `${day} drop-off`)}</label><label><span>↙ PICKUP</span>${input(i, 'pickup', undefined, "Who's driving?", `${day} pickup`)}</label></div><label class="dinner"><span>♨ ON THE MENU</span>${input(i, 'dinner', undefined, "What's for dinner?", `${day} dinner`, true)}</label></article>`;
-  }).join('')}</section><footer><span id="status" role="status">${esc(status)}</span><span>${esc(session.user.email)} · <button id="change-password" class="text-button">Change password</button> · <button id="signout" class="text-button">Sign out</button></span></footer><p class="sync-note">Updates appear within a few seconds. If you both edit the same field, the last saved change wins. Names label the two schedule columns; they do not change account access.</p></main></div><dialog id="family-dialog"><form id="family-form"><div class="eyebrow">YOUR PEOPLE</div><h2>Meet the crew.</h2><p>One schedule column for each of you.</p>${names().map((name, i) => `<label>Person ${i + 1}<input id="name-${i}" value="${esc(name)}" maxlength="60" required></label>`).join('')}<div class="dialog-actions"><button type="button" class="secondary" id="cancel">Cancel</button><button type="submit" class="primary">Save names</button></div></form></dialog><dialog id="password-dialog"><form id="password-form"><h2>Change your password</h2><label>New password<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>Repeat new password<input id="repeat-password" type="password" autocomplete="new-password" minlength="12" required></label><p id="password-message" role="status"></p><div class="dialog-actions"><button type="button" id="password-cancel" class="secondary">Cancel</button><button class="primary">Save password</button></div></form></dialog><dialog id="customize-dialog"><form id="customize-form"><div class="eyebrow">MAKE IT YOURS</div><h2>Customize your planner</h2><p>Choose the words that feel like your family. These changes are shared with both people.</p><label>App name<input id="custom-brand" maxlength="40" required></label><label>Main heading<input id="custom-heading" maxlength="100" required></label><label>Tagline<textarea id="custom-tagline" rows="3" maxlength="200"></textarea></label><button type="button" class="text-button" id="custom-defaults">Use default wording</button><div class="dialog-actions"><button type="button" class="secondary" id="custom-cancel">Cancel</button><button type="submit" class="primary">Save changes</button></div></form></dialog>`;
+  }).join('')}</section><footer><span id="status" role="status">${esc(status)}</span><span>${esc(session.user.email)} · <button id="change-password" class="text-button">Change password</button> · <button id="signout" class="text-button">Sign out</button></span></footer><p class="sync-note">Updates appear within a few seconds. If you both edit the same field, the last saved change wins. Names label the two schedule columns; they do not change account access.</p></main></div><dialog id="family-dialog"><form id="family-form"><div class="eyebrow">YOUR PEOPLE</div><h2>Meet the crew.</h2><p>One schedule column for each of you.</p>${names().map((name, i) => `<label>Person ${i + 1}<input id="name-${i}" value="${esc(name)}" maxlength="60" required></label>`).join('')}<div class="dialog-actions"><button type="button" class="secondary" id="cancel">Cancel</button><button type="submit" class="primary">Save names</button></div></form></dialog><dialog id="password-dialog"><form id="password-form"><h2>Change your password</h2><label>New password<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>Repeat new password<input id="repeat-password" type="password" autocomplete="new-password" minlength="12" required></label><p id="password-message" role="status"></p><div class="dialog-actions"><button type="button" id="password-cancel" class="secondary">Cancel</button><button class="primary">Save password</button></div></form></dialog><dialog id="customize-dialog"><form id="customize-form"><div class="eyebrow">MAKE IT YOURS</div><h2>Customize your planner</h2><p>Choose the words that feel like your family. These changes are shared with both people.</p><label>App name<input id="custom-brand" maxlength="40" required></label><label>Main heading<input id="custom-heading" maxlength="100" required></label><label>Tagline<textarea id="custom-tagline" rows="3" maxlength="200"></textarea></label><button type="button" class="text-button" id="custom-defaults">Use default wording</button><div class="dialog-actions"><button type="button" class="secondary" id="custom-cancel">Cancel</button><button type="submit" class="primary">Save changes</button></div></form></dialog><dialog id="notifications-dialog"><div class="eyebrow">A LITTLE HEADS-UP</div><h2>Tomorrow, planned.</h2><p>Get tomorrow’s schedules, rides, and dinner at <strong>9 p.m. Eastern</strong>, following daylight saving time automatically.</p><p>Notifications may show private plans on your Lock Screen. Signing out turns them off on this device.</p><p id="notification-message" role="status"></p><div class="notification-actions"><button id="notification-enable" class="primary" disabled>Enable notifications</button><button id="notification-test" class="secondary" disabled>Send test</button><button id="notification-disable" class="secondary" disabled>Turn off on this device</button><button id="notification-close" class="secondary">Close</button></div></dialog>`;
   document.querySelector('#prev').onclick = () => move(-7);
   document.querySelector('#next').onclick = () => move(7);
   document.querySelector('#today').onclick = () => { monday = new Date(); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7)); render(); };
   document.querySelector('#print').onclick = () => window.print();
   updateCopy();
+  mountNotificationControls({ client });
   const customizeDialog = document.querySelector('#customize-dialog');
   const customFields = Object.keys(defaultCopy);
   const fillCustom = values => customFields.forEach(field => {
@@ -200,6 +208,7 @@ function render() {
   };
   document.querySelector('#signout').onclick = async () => {
     if (engine.pending.size && !confirm('Some changes have not synced yet. They will retry when you sign in again on this device. Sign out anyway?')) return;
+    try { await disableDeviceNotifications(client); } catch (error) { setStatus(error.message); return; }
     const { error } = await client.auth.signOut();
     if (error) setStatus(`Could not sign out: ${error.message}`);
   };
@@ -216,9 +225,15 @@ async function startSession(nextSession) {
   const { data, error } = await client.from('planner_members').select('user_id').eq('user_id', session.user.id);
   if (version !== sessionVersion) return;
   if (error || !data?.length) {
-    app.innerHTML = `<div class="shell">${header()}<main class="welcome"><h1>One more step.</h1><p>${esc(error ? `Could not check access: ${error.message}` : 'Your account is signed in, but not approved for this planner yet.')}</p><p>The planner owner needs to complete the database setup in SETUP.md, approving exactly two accounts.</p><button id="retry" class="primary">Check access again</button> <button id="logout" class="secondary">Sign out</button></main></div>`;
+    app.innerHTML = `<div class="shell">${header()}<main class="welcome"><h1>One more step.</h1><p>${esc(error ? `Could not check access: ${error.message}` : 'Your account is signed in, but not approved for this planner yet.')}</p><p>The planner owner needs to complete the database setup in SETUP.md, approving exactly two accounts.</p><p id="access-message" role="status"></p><button id="retry" class="primary">Check access again</button> <button id="logout" class="secondary">Sign out</button></main></div>`;
     document.querySelector('#retry').onclick = () => startSession(session);
-    document.querySelector('#logout').onclick = () => client.auth.signOut();
+    document.querySelector('#logout').onclick = async () => {
+      try {
+        await disableDeviceNotifications(client);
+        const { error } = await client.auth.signOut();
+        if (error) throw error;
+      } catch (error) { document.querySelector('#access-message').textContent = error.message; }
+    };
     return;
   }
   engine = new SyncEngine({

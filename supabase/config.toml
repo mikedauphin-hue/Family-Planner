@@ -1,0 +1,3 @@
+[functions.planner-notifications]
+# Authentication is enforced in the handler: user JWT + membership, or the private cron secret.
+verify_jwt = false

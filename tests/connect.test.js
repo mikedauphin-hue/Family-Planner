@@ -17,6 +17,8 @@ function device({ failInit = false, failStorage = false } = {}) {
       signInWithPassword: async () => ({ error: { message: 'Invalid login credentials' } }),
     } };
   };
+  w.mountNotificationControls=()=>{};
+  w.disableDeviceNotifications=async()=>{};
   w.eval(source);
   const submit = (url, key) => {
     w.document.querySelector('#project-url').value = url;

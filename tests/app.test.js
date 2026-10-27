@@ -16,6 +16,8 @@ function device(id, approved=true) {
   w.confirm=()=>true;
   w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
   w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
+  w.mountNotificationControls=()=>{};
+  w.disableDeviceNotifications=async()=>{};
   w.eval(source);
   return {w,doc:w.document,poll:()=>interval?.(),close:()=>w.close()};
 }

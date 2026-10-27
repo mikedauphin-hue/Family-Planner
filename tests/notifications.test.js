@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
+const source = readFileSync(new URL('../notifications.js',import.meta.url),'utf8').replace(/^export /gm,'');
+const appSource=readFileSync(new URL('../src.js',import.meta.url),'utf8');
+const dialog=appSource.match(/<dialog id="notifications-dialog">.*?<\/dialog>/s)[0];
+const tick=()=>new Promise(resolve=>setTimeout(resolve,10));
+function device({iphone=false,home=true,setup=true,permission='default'}={}) {
+  const dom=new JSDOM(`<button id="notifications">Notifications</button>${dialog}`,{url:'https://example.com/Family-Planner/',runScripts:'outside-only'});
+  const w=dom.window;let sub=null,enabled=false,requests=0;const actions=[];
+  Object.defineProperty(w,'isSecureContext',{value:true});
+  if(iphone)Object.defineProperty(w.navigator,'userAgent',{value:'iPhone Safari'});
+  w.matchMedia=()=>({matches:home});
+  w.PushManager=function(){};
+  w.Notification={permission,requestPermission:async()=>{requests++;return permission==='denied'?'denied':'granted';}};
+  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  w.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  const publicKey=btoa('x'.repeat(65));
+  const registration={pushManager:{getSubscription:async()=>sub,subscribe:async options=>{
+    sub={endpoint:'https://web.push.apple.com/test',options,toJSON:()=>({endpoint:'https://web.push.apple.com/test',keys:{}}),unsubscribe:async()=>{sub=null;return true;}};return sub;
+  }}};
+  Object.defineProperty(w.navigator,'serviceWorker',{value:{register:async()=>registration,getRegistration:async()=>registration,ready:Promise.resolve(registration)}});
+  const client={functions:{invoke:async(name,{body})=>{
+    actions.push(body.action);
+    if(!setup)return {error:{message:'Function not deployed'}};
+    if(body.action==='settings')return {data:{publicKey}};
+    if(body.action==='subscribe')enabled=true;
+    if(body.action==='unsubscribe')enabled=false;
+    return {data:{enabled}};
+  }}};
+  w.eval(source);
+  w.mountNotificationControls({client});
+  return {w,client,doc:w.document,actions,requests:()=>requests,sub:()=>sub};
+}
+const iphone=device({iphone:true,home:false});
+iphone.doc.querySelector('#notifications').click();await tick();
+assert.match(iphone.doc.querySelector('#notification-message').textContent,/Add to Home Screen/);
+assert.equal(iphone.requests(),0);assert.deepEqual(iphone.actions,[]);
+assert.equal(iphone.doc.querySelector('#notification-enable').disabled,true);iphone.w.close();
+const notSetup=device({setup:false});notSetup.doc.querySelector('#notifications').click();await tick();
+assert.match(notSetup.doc.querySelector('#notification-message').textContent,/not available yet/);
+assert.equal(notSetup.requests(),0);notSetup.w.close();
+const d=device({iphone:true});d.doc.querySelector('#notifications').click();await tick();
+assert.equal(d.requests(),0);assert.equal(d.doc.querySelector('#notification-enable').disabled,false);
+d.doc.querySelector('#notification-enable').click();await tick();
+assert.equal(d.requests(),1);assert.ok(d.sub());assert.ok(d.actions.includes('subscribe'));
+assert.match(d.doc.querySelector('#notification-message').textContent,/9 p.m. Eastern/);
+d.doc.querySelector('#notification-test').click();await tick();assert.ok(d.actions.includes('test'));
+d.doc.querySelector('#notification-disable').click();await tick();assert.equal(d.sub(),null);assert.ok(d.actions.includes('unsubscribe'));
+d.doc.querySelector('#notification-enable').click();await tick();assert.ok(d.sub());
+await d.w.disableDeviceNotifications(d.client);assert.equal(d.sub(),null);d.w.close();
+const denied=device({permission:'denied'});denied.doc.querySelector('#notifications').click();await tick();
+assert.match(denied.doc.querySelector('#notification-message').textContent,/blocked/);assert.equal(denied.requests(),0);denied.w.close();
+console.log('PASS: iPhone installation instructions; no permission prompt until Enable is tapped; missing setup/denied permission; subscribe/test/disable; sign-out unsubscribes device.');
