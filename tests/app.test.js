@@ -14,6 +14,8 @@ function device(id, approved=true) {
   w.SyncEngine=SyncEngine;w.createClient=()=>client;
   w.setInterval=fn=>{interval=fn;return 1;};w.clearInterval=()=>{};
   w.confirm=()=>true;
+  w.HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+  w.HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
   w.eval(source);
   return {w,doc:w.document,poll:()=>interval?.(),close:()=>w.close()};
 }
@@ -33,8 +35,43 @@ a.doc.querySelector('#name-0').value='Alex';a.doc.querySelector('#name-1').value
 a.doc.querySelector('#family-form').dispatchEvent(new a.w.Event('submit',{cancelable:true}));
 await wait(550);await b.poll();
 assert.equal(b.doc.querySelector('[data-name="0"]').textContent,'Alex');
+// Custom wording saves globally, survives week changes, and reaches the other device.
+a.doc.querySelector('#customize').click();
+assert.ok(a.doc.querySelector('#customize-dialog').open);
+a.doc.querySelector('#custom-brand').value='The Rivera family';
+a.doc.querySelector('#custom-heading').value='Our next adventure';
+a.doc.querySelector('#custom-tagline').value='<img src=x onerror=alert(1)> Dinner & rides';
+a.doc.querySelector('#customize-form').dispatchEvent(new a.w.Event('submit',{cancelable:true}));
+assert.equal(a.doc.querySelector('#customize-dialog').open,false);
+assert.equal(a.doc.querySelector('[data-copy="heading"]').textContent,'Our next adventure');
+assert.equal(a.doc.querySelector('[data-copy="tagline"] img'),null);
+await wait(550);await b.poll();
+assert.equal(b.doc.querySelector('[data-copy="brand"]').textContent,'The Rivera family');
+assert.equal(b.doc.title,'The Rivera family · Family Planner');
+assert.equal(b.doc.querySelector('[data-copy="tagline"]').textContent,'<img src=x onerror=alert(1)> Dinner & rides');
+a.doc.querySelector('#next').click();
+assert.equal(a.doc.querySelector('[data-copy="heading"]').textContent,'Our next adventure');
+a.doc.querySelector('#prev').click();
+assert.equal(a.doc.querySelector('[aria-label="Monday dinner"]').value,'Tacos');
+const refreshed=device('person-a');await wait(30);
+assert.equal(refreshed.doc.querySelector('[data-copy="heading"]').textContent,'Our next adventure');
+refreshed.close();
+// Cancel discards unsaved wording, and remote polling does not replace an open draft.
+a.doc.querySelector('#customize').click();
+a.doc.querySelector('#custom-heading').value='Unsaved draft';
+await a.poll();
+assert.equal(a.doc.querySelector('#custom-heading').value,'Unsaved draft');
+a.doc.querySelector('#custom-cancel').click();
+a.doc.querySelector('#customize').click();
+assert.equal(a.doc.querySelector('#custom-heading').value,'Our next adventure');
+a.doc.querySelector('#custom-defaults').click();
+a.doc.querySelector('#customize-form').dispatchEvent(new a.w.Event('submit',{cancelable:true}));
+assert.equal(a.doc.querySelector('[data-copy="brand"]').textContent,'hearth');
+assert.equal(a.doc.querySelector('[data-copy="heading"]').textContent,'Our week, together.');
+await wait(550);await b.poll();
+assert.equal(b.doc.querySelector('[data-copy="brand"]').textContent,'hearth');
 a.doc.querySelector('#signout').click();await wait(20);
 assert.equal(a.doc.querySelectorAll('.day').length,0);
 assert.ok(a.doc.querySelector('#auth'));
-console.log('PASS: two browser contexts share dinner/names; exactly two schedule columns; week isolation; unapproved account blocked; sign-out removes planner.');
+console.log('PASS: two browser contexts share dinner/names/custom wording; customization survives reload, escapes HTML, cancels drafts and restores defaults; exactly two schedule columns; week isolation; unapproved account blocked; sign-out removes planner.');
 for(const d of [a,b,outsider])d.close();

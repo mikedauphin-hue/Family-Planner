@@ -78,6 +78,7 @@ The publishable key is designed for browser apps; it is not an administrator cre
 3. On B, change Tuesday pickup; check that A sees it too.
 4. Refresh both devices and confirm both edits remain.
 5. Use **Edit names** to label your two schedule columns. This changes labels, not the approved sign-in accounts.
+6. Choose **Customize planner** near the top to change the app name, main heading, and tagline. Click **Save changes** to share your wording with both people across all weeks. **Use default wording** fills the original text back in; click **Save changes** to apply it.
 
 Both people can edit either person's schedule, rides, and dinners. Changes are checked every four seconds while the page is open. Background browser tabs may update more slowly. Changes to different fields are saved separately. If both people change the same field, the last successfully saved change wins.
 

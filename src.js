@@ -17,6 +17,16 @@ let status = 'Connect your shared planner to get started.';
 const app = document.querySelector('#app');
 const rowId = (day, field, person) => `${iso(monday)}/${day}/${field}${person === undefined ? '' : `/${person}`}`;
 const get = id => rows.get(id) ?? '';
+const defaultCopy = {
+  brand: 'hearth',
+  heading: 'Our week, together.',
+  tagline: 'Every schedule, every ride, every dinner. Shared between you two.',
+};
+const copy = field => rows.has(`custom/${field}`) ? get(`custom/${field}`) : defaultCopy[field];
+function updateCopy() {
+  document.querySelectorAll('[data-copy]').forEach(el => { el.textContent = copy(el.dataset.copy); });
+  document.title = `${copy('brand')} · Family Planner`;
+}
 const names = () => [get('name/0') || 'Person 1', get('name/1') || 'Person 2'];
 function setStatus(message) {
   status = message;
@@ -36,9 +46,10 @@ function applyRows(values) {
     if (document.activeElement !== input) input.value = get(input.dataset.id);
   });
   document.querySelectorAll('[data-name]').forEach(el => { el.textContent = names()[Number(el.dataset.name)]; });
+  updateCopy();
 }
 function header() {
-  return '<header><a class="brand" href="./"><span class="brand-icon">▦</span> hearth<span class="brand-dot">.</span></a><span class="header-note">A little planning. More time together.</span></header>';
+  return `<header><a class="brand" href="./"><span class="brand-icon">▦</span><span data-copy="brand">${esc(copy('brand'))}</span><span class="brand-dot">.</span></a><span class="header-note">A little planning. More time together.</span></header>`;
 }
 function gate(message = '') {
   app.innerHTML = `<div class="shell">${header()}<main class="welcome"><div class="eyebrow">ONE WEEK. TWO PEOPLE.</div><h1>Our week, together<span>.</span></h1><p>Your schedules, rides, and dinners, shared across devices.</p><section class="connection-card"><h2>${config ? 'Sign in to your planner' : 'Connect your shared planner'}</h2><p>${config ? 'Use the email and password your planner owner created for you. Both people connect to the same Supabase project.' : 'First-time setup? Follow SETUP.md in the GitHub repository. Enter the same project details on each device.'}</p>${config ? `<form id="auth"><label>Email<input id="email" type="email" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label><div class="dialog-actions"><button class="primary" type="submit">Sign in</button></div></form><button id="change-project" class="text-button">Change project connection</button>` : `<form id="connect"><label>Supabase project URL<input id="project-url" type="url" placeholder="https://your-project.supabase.co" required></label><label>Publishable key<input id="public-key" type="text" autocomplete="off" placeholder="sb_publishable_…" required></label><p>Use the public publishable key. Never enter a secret or service_role key.</p><button class="primary" type="submit">Connect planner</button></form>`}<p id="auth-message" role="status">${esc(message)}</p></section><p class="privacy-note">Only the two approved accounts can access your planner. Your old local planner is kept separately on this device.</p></main></div>`;
@@ -83,15 +94,42 @@ function input(day, field, person, placeholder, label, textarea = false) {
 function render() {
   const end = new Date(monday); end.setDate(end.getDate() + 6);
   const fmt = { month: 'short', day: 'numeric' };
-  app.innerHTML = `<div class="shell">${header()}<main><section class="intro"><div><div class="eyebrow">THE SHARED FAMILY PLANNER</div><h1>Our week, together<span>.</span></h1><p>Every schedule, every ride, every dinner. Shared between you two.</p></div><button class="print secondary" id="print">↗ Print week</button></section><section class="toolbar"><div class="week-nav"><button id="prev" aria-label="Previous week">‹</button><div><span class="small-label">WEEK OF</span><h2>${monday.toLocaleDateString('en-US', fmt)} – ${end.toLocaleDateString('en-US', fmt)}<span class="year">, ${end.getFullYear()}</span></h2></div><button id="next" aria-label="Next week">›</button><button class="today" id="today">This week</button></div><button class="secondary" id="members">♧ Edit names</button></section><div class="family-strip"><span class="small-label">OUR CREW</span>${names().map((name, i) => `<span class="person"><i class="dot color${i}"></i><span data-name="${i}">${esc(name)}</span></span>`).join('')}<span class="hint">Changes sync automatically</span></div><section class="week-grid">${days.map((day, i) => {
+  app.innerHTML = `<div class="shell">${header()}<main><section class="intro"><div><div class="eyebrow">THE SHARED FAMILY PLANNER</div><h1 data-copy="heading">${esc(copy('heading'))}</h1><p data-copy="tagline">${esc(copy('tagline'))}</p></div><div class="intro-actions"><button class="secondary" id="customize">Customize planner</button><button class="print secondary" id="print">↗ Print week</button></div></section><section class="toolbar"><div class="week-nav"><button id="prev" aria-label="Previous week">‹</button><div><span class="small-label">WEEK OF</span><h2>${monday.toLocaleDateString('en-US', fmt)} – ${end.toLocaleDateString('en-US', fmt)}<span class="year">, ${end.getFullYear()}</span></h2></div><button id="next" aria-label="Next week">›</button><button class="today" id="today">This week</button></div><button class="secondary" id="members">♧ Edit names</button></section><div class="family-strip"><span class="small-label">OUR CREW</span>${names().map((name, i) => `<span class="person"><i class="dot color${i}"></i><span data-name="${i}">${esc(name)}</span></span>`).join('')}<span class="hint">Changes sync automatically</span></div><section class="week-grid">${days.map((day, i) => {
     const date = new Date(monday); date.setDate(date.getDate() + i);
     const today = iso(date) === iso(new Date());
     return `<article class="day ${i > 4 ? 'weekend' : ''} ${today ? 'is-today' : ''}"><div class="day-title"><h3>${day}</h3><span class="date">${date.getDate()}</span></div>${today ? '<span class="today-tag">TODAY</span>' : ''}<div class="schedules">${names().map((name, j) => `<label class="schedule"><span><i class="dot color${j}"></i><span data-name="${j}">${esc(name)}</span></span>${input(i, 'schedule', j, 'Add a plan…', `${name} schedule for ${day}`, true)}</label>`).join('')}</div><div class="rides"><label><span>↗ DROP-OFF</span>${input(i, 'dropoff', undefined, "Who's driving?", `${day} drop-off`)}</label><label><span>↙ PICKUP</span>${input(i, 'pickup', undefined, "Who's driving?", `${day} pickup`)}</label></div><label class="dinner"><span>♨ ON THE MENU</span>${input(i, 'dinner', undefined, "What's for dinner?", `${day} dinner`, true)}</label></article>`;
-  }).join('')}</section><footer><span id="status" role="status">${esc(status)}</span><span>${esc(session.user.email)} · <button id="change-password" class="text-button">Change password</button> · <button id="signout" class="text-button">Sign out</button></span></footer><p class="sync-note">Updates appear within a few seconds. If you both edit the same field, the last saved change wins. Names label the two schedule columns; they do not change account access.</p></main></div><dialog id="family-dialog"><form id="family-form"><div class="eyebrow">YOUR PEOPLE</div><h2>Meet the crew.</h2><p>One schedule column for each of you.</p>${names().map((name, i) => `<label>Person ${i + 1}<input id="name-${i}" value="${esc(name)}" maxlength="60" required></label>`).join('')}<div class="dialog-actions"><button type="button" class="secondary" id="cancel">Cancel</button><button type="submit" class="primary">Save names</button></div></form></dialog><dialog id="password-dialog"><form id="password-form"><h2>Change your password</h2><label>New password<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>Repeat new password<input id="repeat-password" type="password" autocomplete="new-password" minlength="12" required></label><p id="password-message" role="status"></p><div class="dialog-actions"><button type="button" id="password-cancel" class="secondary">Cancel</button><button class="primary">Save password</button></div></form></dialog>`;
+  }).join('')}</section><footer><span id="status" role="status">${esc(status)}</span><span>${esc(session.user.email)} · <button id="change-password" class="text-button">Change password</button> · <button id="signout" class="text-button">Sign out</button></span></footer><p class="sync-note">Updates appear within a few seconds. If you both edit the same field, the last saved change wins. Names label the two schedule columns; they do not change account access.</p></main></div><dialog id="family-dialog"><form id="family-form"><div class="eyebrow">YOUR PEOPLE</div><h2>Meet the crew.</h2><p>One schedule column for each of you.</p>${names().map((name, i) => `<label>Person ${i + 1}<input id="name-${i}" value="${esc(name)}" maxlength="60" required></label>`).join('')}<div class="dialog-actions"><button type="button" class="secondary" id="cancel">Cancel</button><button type="submit" class="primary">Save names</button></div></form></dialog><dialog id="password-dialog"><form id="password-form"><h2>Change your password</h2><label>New password<input id="new-password" type="password" autocomplete="new-password" minlength="12" required></label><label>Repeat new password<input id="repeat-password" type="password" autocomplete="new-password" minlength="12" required></label><p id="password-message" role="status"></p><div class="dialog-actions"><button type="button" id="password-cancel" class="secondary">Cancel</button><button class="primary">Save password</button></div></form></dialog><dialog id="customize-dialog"><form id="customize-form"><div class="eyebrow">MAKE IT YOURS</div><h2>Customize your planner</h2><p>Choose the words that feel like your family. These changes are shared with both people.</p><label>App name<input id="custom-brand" maxlength="40" required></label><label>Main heading<input id="custom-heading" maxlength="100" required></label><label>Tagline<textarea id="custom-tagline" rows="3" maxlength="200"></textarea></label><button type="button" class="text-button" id="custom-defaults">Use default wording</button><div class="dialog-actions"><button type="button" class="secondary" id="custom-cancel">Cancel</button><button type="submit" class="primary">Save changes</button></div></form></dialog>`;
   document.querySelector('#prev').onclick = () => move(-7);
   document.querySelector('#next').onclick = () => move(7);
   document.querySelector('#today').onclick = () => { monday = new Date(); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7)); render(); };
   document.querySelector('#print').onclick = () => window.print();
+  updateCopy();
+  const customizeDialog = document.querySelector('#customize-dialog');
+  const customFields = Object.keys(defaultCopy);
+  const fillCustom = values => customFields.forEach(field => {
+    const input = document.querySelector(`#custom-${field}`);
+    input.value = values[field];
+    input.setCustomValidity('');
+  });
+  document.querySelector('#customize').onclick = () => {
+    fillCustom(Object.fromEntries(customFields.map(field => [field, copy(field)])));
+    customizeDialog.showModal();
+  };
+  document.querySelector('#custom-cancel').onclick = () => customizeDialog.close();
+  document.querySelector('#custom-defaults').onclick = () => fillCustom(defaultCopy);
+  customFields.forEach(field => document.querySelector(`#custom-${field}`).addEventListener('input', e => e.target.setCustomValidity('')));
+  document.querySelector('#customize-form').onsubmit = e => {
+    e.preventDefault();
+    for (const field of ['brand', 'heading']) {
+      const input = document.querySelector(`#custom-${field}`);
+      input.setCustomValidity(input.value.trim() ? '' : 'Please enter some wording.');
+    }
+    if (!e.target.reportValidity()) return;
+    customFields.forEach(field => set(`custom/${field}`, document.querySelector(`#custom-${field}`).value.trim()));
+    updateCopy();
+    customizeDialog.close();
+  };
+
   document.querySelectorAll('[data-id]').forEach(el => el.addEventListener('input', () => set(el.dataset.id, el.value)));
   const dialog = document.querySelector('dialog');
   document.querySelector('#members').onclick = () => dialog.showModal();
