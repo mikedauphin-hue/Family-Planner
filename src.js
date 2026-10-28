@@ -19,6 +19,7 @@ let config;
 try { config = JSON.parse(localStorage.getItem('family-cloud-config')); } catch {}
 let client, session, engine, poll, saveTimer;
 let sessionVersion = 0;
+let canEdit = false;
 let rows = new Map();
 let status = 'Connect your shared planner to get started.';
 const app = document.querySelector('#app');
@@ -41,6 +42,7 @@ function setStatus(message) {
   if (el) el.textContent = message;
 }
 function set(id, value) {
+  if (!canEdit) return;
   rows.set(id, value);
   engine.set(id, value);
   clearTimeout(saveTimer);
@@ -76,7 +78,7 @@ function connectionError(message, fieldId) {
   messageElement.scrollIntoView?.({ block: 'nearest' });
 }
 function gate(message = '') {
-  app.innerHTML = `<div class="shell">${header()}<main class="welcome"><div class="eyebrow">ONE WEEK. TWO PEOPLE.</div><h1>Our week, together<span>.</span></h1><p>Your schedules, rides, and dinners, shared across devices.</p><section class="connection-card"><div class="eyebrow">STEP ${config ? '2' : '1'} OF 2</div><h2>${config ? 'Sign in to your planner' : 'Connect your shared planner'}</h2><p>${config ? 'Use the email and password your planner owner created for you. Both people connect to the same Supabase project.' : 'First-time setup? Follow SETUP.md in the GitHub repository. Enter the same project details on each device.'}</p><p id="auth-message" role="alert">${esc(message)}</p>${config ? `<form id="auth"><label>Email<input id="email" type="email" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label><div class="dialog-actions"><button class="primary" type="submit">Sign in</button></div></form><button id="change-project" class="text-button">Change project connection</button>` : `<form id="connect" novalidate><label>Supabase project URL<input id="project-url" type="url" placeholder="https://your-project.supabase.co" required></label><label>Publishable key or legacy anon key<input id="public-key" type="text" autocomplete="off" placeholder="sb_publishable_…" required></label><p>Paste your public publishable key (sb_publishable_…) or legacy anon key (eyJ…). Never enter a secret or service_role key.</p><button class="primary" type="submit">Connect planner</button></form>`}</section><p class="privacy-note">Only the two approved accounts can access your planner. Your old local planner is kept separately on this device.</p></main></div>`;
+  app.innerHTML = `<div class="shell">${header()}<main class="welcome"><div class="eyebrow">ONE WEEK. TWO PEOPLE.</div><h1>Our week, together<span>.</span></h1><p>Your schedules, rides, and dinners, shared across devices.</p><section class="connection-card"><div class="eyebrow">STEP ${config ? '2' : '1'} OF 2</div><h2>${config ? 'Sign in to your planner' : 'Connect your shared planner'}</h2><p>${config ? 'Use the email and password your planner owner created for you. Both people connect to the same Supabase project.' : 'First-time setup? Follow SETUP.md in the GitHub repository. Enter the same project details on each device.'}</p><p id="auth-message" role="alert">${esc(message)}</p>${config ? `<form id="auth"><label>Email<input id="email" type="email" autocomplete="username" required></label><label>Password<input id="password" type="password" autocomplete="current-password" minlength="8" required></label><div class="dialog-actions"><button class="primary" type="submit">Sign in</button></div></form><button id="change-project" class="text-button">Change project connection</button>` : `<form id="connect" novalidate><label>Supabase project URL<input id="project-url" type="url" placeholder="https://your-project.supabase.co" required></label><label>Publishable key or legacy anon key<input id="public-key" type="text" autocomplete="off" placeholder="sb_publishable_…" required></label><p>Paste your public publishable key (sb_publishable_…) or legacy anon key (eyJ…). Never enter a secret or service_role key.</p><button class="primary" type="submit">Connect planner</button></form>`}</section><p class="privacy-note">Only approved accounts can access your planner. Your old local planner is kept separately on this device.</p></main></div>`;
   if (!config) {
     document.querySelector('#connect').onsubmit = e => {
       e.preventDefault();
@@ -134,13 +136,14 @@ function gate(message = '') {
 }
 function input(day, field, person, placeholder, label, textarea = false) {
   const id = rowId(day, field, person);
-  const attrs = `maxlength="20000" data-id="${esc(id)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)}"`;
+  if (!canEdit) placeholder = field === 'schedule' ? 'No plans added' : field === 'dinner' ? 'Not planned yet' : 'Not assigned';
+  const attrs = `maxlength="20000" ${canEdit ? '' : 'readonly'} data-id="${esc(id)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)}"`;
   return textarea ? `<textarea rows="${field === 'dinner' ? 4 : 2}" ${attrs}>${esc(get(id))}</textarea>` : `<input ${attrs} value="${esc(get(id))}">`;
 }
 function render() {
   const end = new Date(monday); end.setDate(end.getDate() + 6);
   const fmt = { month: 'short', day: 'numeric' };
-  app.innerHTML = `<div class="shell">${header()}<main><section class="intro"><div><div class="eyebrow">THE SHARED FAMILY PLANNER</div><h1 data-copy="heading">${esc(copy('heading'))}</h1><p data-copy="tagline">${esc(copy('tagline'))}</p></div><div class="intro-actions"><button class="secondary" id="notifications">Notifications</button><button class="secondary" id="customize">Customize planner</button><button class="print secondary" id="print">↗ Print week</button></div></section><section class="toolbar"><div class="week-nav"><button id="prev" aria-label="Previous week">‹</button><div><span class="small-label">WEEK OF</span><h2>${monday.toLocaleDateString('en-US', fmt)} – ${end.toLocaleDateString('en-US', fmt)}<span class="year">, ${end.getFullYear()}</span></h2></div><button id="next" aria-label="Next week">›</button><button class="today" id="today">This week</button></div><button class="secondary" id="members">♧ Edit names</button></section><div class="family-strip"><span class="small-label">OUR CREW</span>${names().map((name, i) => `<span class="person"><i class="dot color${i}"></i><span data-name="${i}">${esc(name)}</span></span>`).join('')}<span class="hint">Changes sync automatically</span></div><section class="week-grid">${days.map((day, i) => {
+  app.innerHTML = `<div class="shell">${header()}<main><section class="intro"><div><div class="eyebrow">THE SHARED FAMILY PLANNER</div><h1 data-copy="heading">${esc(copy('heading'))}</h1><p data-copy="tagline">${esc(copy('tagline'))}</p></div><div class="intro-actions"><button class="secondary" id="notifications">Notifications</button><button class="secondary" id="customize">Customize planner</button><button class="print secondary" id="print">↗ Print week</button></div></section>${canEdit ? '' : '<p class="viewer-notice">Read-only access · You can browse and print. Changes from the editors appear automatically.</p>'}<section class="toolbar"><div class="week-nav"><button id="prev" aria-label="Previous week">‹</button><div><span class="small-label">WEEK OF</span><h2>${monday.toLocaleDateString('en-US', fmt)} – ${end.toLocaleDateString('en-US', fmt)}<span class="year">, ${end.getFullYear()}</span></h2></div><button id="next" aria-label="Next week">›</button><button class="today" id="today">This week</button></div><button class="secondary" id="members">♧ Edit names</button></section><div class="family-strip"><span class="small-label">OUR CREW</span>${names().map((name, i) => `<span class="person"><i class="dot color${i}"></i><span data-name="${i}">${esc(name)}</span></span>`).join('')}<span class="hint">Changes sync automatically</span></div><section class="week-grid">${days.map((day, i) => {
     const date = new Date(monday); date.setDate(date.getDate() + i);
     const today = iso(date) === iso(new Date());
     return `<article class="day ${i > 4 ? 'weekend' : ''} ${today ? 'is-today' : ''}"><div class="day-title"><h3>${day}</h3><span class="date">${date.getDate()}</span></div>${today ? '<span class="today-tag">TODAY</span>' : ''}<section class="rides" aria-labelledby="school-${i}"><h4 class="section-title" id="school-${i}">School and Child Care</h4><label><span>↗ DROP-OFF</span>${input(i, 'dropoff', undefined, "Who's dropping off?", `${day} drop-off`)}</label><label><span>↙ PICKUP</span>${input(i, 'pickup', undefined, "Who's picking up?", `${day} pickup`)}</label></section><label class="dinner"><span>♨ ON THE MENU</span>${input(i, 'dinner', undefined, "What's for dinner?", `${day} dinner`, true)}</label><section class="schedules" aria-labelledby="agenda-${i}"><h4 class="section-title" id="agenda-${i}">Today’s Agenda</h4>${names().map((name, j) => `<label class="schedule"><span><i class="dot color${j}"></i><span data-name="${j}">${esc(name)}</span></span>${input(i, 'schedule', j, 'Add a plan…', `${name} schedule for ${day}`, true)}</label>`).join('')}</section></article>`;
@@ -150,7 +153,8 @@ function render() {
   document.querySelector('#today').onclick = () => { monday = new Date(); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7)); render(); };
   document.querySelector('#print').onclick = () => window.print();
   updateCopy();
-  mountNotificationControls({ client });
+  for (const id of ['members', 'customize', 'notifications']) document.querySelector(`#${id}`).hidden = !canEdit;
+  if (canEdit) mountNotificationControls({ client });
   const customizeDialog = document.querySelector('#customize-dialog');
   const customFields = Object.keys(defaultCopy);
   const fillCustom = values => customFields.forEach(field => {
@@ -167,6 +171,7 @@ function render() {
   customFields.forEach(field => document.querySelector(`#custom-${field}`).addEventListener('input', e => e.target.setCustomValidity('')));
   document.querySelector('#customize-form').onsubmit = e => {
     e.preventDefault();
+    if (!canEdit) return;
     for (const field of ['brand', 'heading']) {
       const input = document.querySelector(`#custom-${field}`);
       input.setCustomValidity(input.value.trim() ? '' : 'Please enter some wording.');
@@ -183,6 +188,7 @@ function render() {
   document.querySelector('#cancel').onclick = () => dialog.close();
   document.querySelector('#family-form').onsubmit = e => {
     e.preventDefault();
+    if (!canEdit) return;
     const values = [0, 1].map(i => document.querySelector(`#name-${i}`).value.trim());
     if (values.some(v => !v)) return;
     values.forEach((value, i) => set(`name/${i}`, value));
@@ -218,14 +224,21 @@ async function startSession(nextSession) {
   const version = ++sessionVersion;
   engine?.stop(); clearInterval(poll); clearTimeout(saveTimer);
   session = nextSession;
+  canEdit = false;
   rows = new Map();
   if (!session) { gate(config ? 'Project details saved. Sign in below with your planner email and password.' : ''); return; }
   setStatus('Connecting to shared planner…');
   // Membership is checked before rendering editable fields. RLS independently checks every request.
-  const { data, error } = await client.from('planner_members').select('user_id').eq('user_id', session.user.id);
+  const editor = await client.from('planner_members').select('user_id').eq('user_id', session.user.id);
   if (version !== sessionVersion) return;
-  if (error || !data?.length) {
-    app.innerHTML = `<div class="shell">${header()}<main class="welcome"><h1>One more step.</h1><p>${esc(error ? `Could not check access: ${error.message}` : 'Your account is signed in, but not approved for this planner yet.')}</p><p>The planner owner needs to complete the database setup in SETUP.md, approving exactly two accounts.</p><p id="access-message" role="status"></p><button id="retry" class="primary">Check access again</button> <button id="logout" class="secondary">Sign out</button></main></div>`;
+  canEdit = !editor.error && Boolean(editor.data?.length);
+  // Check the additive viewer table only for non-editors, so existing editor accounts
+  // keep working before the owner installs the viewer migration.
+  const viewer = canEdit || editor.error ? null : await client.from('planner_viewers').select('user_id').eq('user_id', session.user.id);
+  if (version !== sessionVersion) return;
+  const error = editor.error || viewer?.error;
+  if (error || !canEdit && !viewer?.data?.length) {
+    app.innerHTML = `<div class="shell">${header()}<main class="welcome"><h1>One more step.</h1><p>${esc(error ? `Could not check access: ${error.message}` : 'Your account is signed in, but not approved for this planner yet.')}</p><p>The planner owner needs to approve your account. See SETUP.md for editor access or VIEWER.md for read-only access.</p><p id="access-message" role="status"></p><button id="retry" class="primary">Check access again</button> <button id="logout" class="secondary">Sign out</button></main></div>`;
     document.querySelector('#retry').onclick = () => startSession(session);
     document.querySelector('#logout').onclick = async () => {
       try {
@@ -238,7 +251,8 @@ async function startSession(nextSession) {
   }
   engine = new SyncEngine({
     storage: localStorage,
-    storageKey: `family-shared-v1:${config.url}:${session.user.id}`,
+    storageKey: `${canEdit ? 'family-shared-v1' : 'family-viewer-v1'}:${config.url}:${session.user.id}`,
+    readOnly: !canEdit,
     read: async () => {
       const result = [];
       for (let offset = 0; ; offset += 500) {
@@ -248,7 +262,7 @@ async function startSession(nextSession) {
         if (data.length < 500) return result;
       }
     },
-    write: async row => { const { error } = await client.from('planner_entries').upsert(row); if (error) throw error; },
+    write: async row => { if (!canEdit) throw new Error('This account has read-only access'); const { error } = await client.from('planner_entries').upsert(row); if (error) throw error; },
     onRows: applyRows,
     onStatus: setStatus,
   });

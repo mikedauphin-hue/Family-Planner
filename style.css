@@ -13,3 +13,5 @@
 .section-title{font-size:11px;line-height:1.5;font-weight:700;color:#694280;margin:0 0 15px;overflow-wrap:normal}@media print{.section-title{font-size:9px}}
 
 .rides .section-title{margin-bottom:5px}.rides input{display:block}
+
+.viewer-notice{font-size:13px;line-height:1.6;color:#694280;background:#f0e5fa;padding:12px 16px;border-radius:8px;margin:0 0 18px}[data-id][readonly]{cursor:default}[data-id][readonly]:hover{background:transparent}[hidden]{display:none!important}

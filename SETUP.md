@@ -86,6 +86,10 @@ Once loaded, unsent edits are kept on that device and retried after a connection
 
 The shared planner starts empty. Old plans remain in the original browser's local storage under the old planner key; they are not automatically uploaded. Downloaded older copies of the app do not automatically update. `family-planner-local.html` preserves the original local-only app; `family-planner.html` is the new shared version.
 
+## Optional read-only login
+
+To let another person view updates without editing, follow [VIEWER.md](VIEWER.md). Create a third login and approve it with `supabase/add-viewer.sql`; do not add that user to the editors table or rerun the original setup script.
+
 ## If you get stuck
 
 - **Account not approved / One more step:** confirm the two users exist, then run the complete SQL script with those exact emails. Click **Check access again**.

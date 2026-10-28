@@ -8,6 +8,10 @@ A Monday–Sunday planner for two people, with schedules, pickup/drop-off assign
 
 The shared app and GitHub Pages workflow are implemented. A Supabase project, two approved users, the database setup, and Pages activation are required before live synchronization works. Automated tests cover field-level sync, two simulated browser contexts, and real PostgreSQL row-level security through PGlite. They do not establish that a real Supabase project has been configured.
 
+## Read-only login
+
+[Add a private viewer](VIEWER.md) without changing the two editing accounts. After creating and confirming the new Authentication user, run `supabase/add-viewer.sql` with their email. The app uses a separate viewer membership table, and database policies enforce read-only access. Public access stays disabled.
+
 ## Night-before iPhone notifications
 
 [Browser-only notification setup](NOTIFICATIONS.md) adds tomorrow’s summary at **9 p.m. Eastern** using Supabase Edge Functions, Cron, Vault, and Web Push. Both users must install the Home Screen app and allow notifications on their own iPhones. Server deployment/secrets/scheduling are separate from publishing the website; notifications are not active until configured and tested.

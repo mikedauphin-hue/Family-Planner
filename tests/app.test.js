@@ -5,11 +5,11 @@ import { SyncEngine } from '../sync-engine.js';
 const source=readFileSync(new URL('../src.js', import.meta.url),'utf8').replace(/^import .*;\n/gm,'');
 const database=new Map();
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-function device(id, approved=true) {
+function device(id, approved=true, viewer=false) {
   const dom=new JSDOM('<div id="app"></div>',{url:'https://example.com/Family-Planner/',runScripts:'outside-only'});
   const w=dom.window;let callback;let interval;
   const user={user:{id,email:id+'@example.com'}};
-  const client={auth:{onAuthStateChange:fn=>{callback=fn;fn('INITIAL_SESSION',user);}, signOut:async()=>{callback('SIGNED_OUT',null);return {};},updateUser:async()=>({})},from:table=>({select:()=>table==='planner_members'?{eq:async()=>({data:approved?[{user_id:id}]:[],error:null})}:{order:()=>({range:async(start,end)=>({data:[...database.values()].sort((a,b)=>a.id.localeCompare(b.id)).slice(start,end+1),error:null})})},upsert:async row=>{database.set(row.id,{...row});return {};}})};
+  const client={auth:{onAuthStateChange:fn=>{callback=fn;fn('INITIAL_SESSION',user);}, signOut:async()=>{callback('SIGNED_OUT',null);return {};},updateUser:async()=>({})},from:table=>({select:()=>['planner_members','planner_viewers'].includes(table)?{eq:async()=>({data:(table==='planner_members'?approved:viewer)?[{user_id:id}]:[],error:null})}:{order:()=>({range:async(start,end)=>({data:[...database.values()].sort((a,b)=>a.id.localeCompare(b.id)).slice(start,end+1),error:null})})},upsert:async row=>{database.set(row.id,{...row});return {};}})};
   w.localStorage.setItem('family-cloud-config',JSON.stringify({url:'https://example.supabase.co',key:'sb_publishable_test'}));
   w.SyncEngine=SyncEngine;w.createClient=()=>client;
   w.setInterval=fn=>{interval=fn;return 1;};w.clearInterval=()=>{};
@@ -21,16 +21,34 @@ function device(id, approved=true) {
   w.eval(source);
   return {w,doc:w.document,poll:()=>interval?.(),close:()=>w.close()};
 }
-const a=device('person-a'),b=device('person-b'), outsider=device('outsider',false);
+const a=device('person-a'),b=device('person-b'), outsider=device('outsider',false), reader=device('viewer',false,true);
 await wait(30);
 assert.equal(a.doc.querySelectorAll('.day').length,7);
 assert.equal(a.doc.querySelectorAll('.schedule').length,14);
 assert.match(outsider.doc.body.textContent,/not approved/);
 assert.equal(outsider.doc.querySelectorAll('[data-id]').length,0);
+assert.equal(reader.doc.querySelectorAll('.day').length,7);
+assert.match(reader.doc.querySelector('.viewer-notice').textContent,/Read-only access/);
+assert.ok([...reader.doc.querySelectorAll('[data-id]')].every(el=>el.readOnly));
+for (const id of ['members','customize','notifications']) assert.equal(reader.doc.querySelector(`#${id}`).hidden,true);
+assert.equal(reader.doc.querySelector('#print').hidden,false);
+assert.equal(reader.doc.querySelector('#change-password').hidden,false);
 const dinner=a.doc.querySelector('[aria-label="Monday dinner"]');
 dinner.value='Tacos';dinner.dispatchEvent(new a.w.Event('input'));
 await wait(550);await b.poll();
 assert.equal(b.doc.querySelector('[aria-label="Monday dinner"]').value,'Tacos');
+await reader.poll();
+assert.equal(reader.doc.querySelector('[aria-label="Monday dinner"]').value,'Tacos');
+// Even a forged DOM event cannot queue a write in a viewer session.
+const readonlyDinner=reader.doc.querySelector('[aria-label="Monday dinner"]');
+readonlyDinner.value='Unauthorized change';
+readonlyDinner.dispatchEvent(new reader.w.Event('input'));
+await wait(550);await reader.poll();
+assert.equal(readonlyDinner.value,'Tacos');
+assert.equal([...database.values()].some(row=>row.value==='Unauthorized change'),false);
+reader.doc.querySelector('#next').click();
+assert.ok([...reader.doc.querySelectorAll('[data-id]')].every(el=>el.readOnly));
+reader.doc.querySelector('#prev').click();
 a.doc.querySelector('#next').click();assert.equal(a.doc.querySelector('[aria-label="Monday dinner"]').value,'');
 a.doc.querySelector('#prev').click();assert.equal(a.doc.querySelector('[aria-label="Monday dinner"]').value,'Tacos');
 a.doc.querySelector('#name-0').value='Alex';a.doc.querySelector('#name-1').value='Jamie';
@@ -75,5 +93,5 @@ assert.equal(b.doc.querySelector('[data-copy="brand"]').textContent,'hearth');
 a.doc.querySelector('#signout').click();await wait(20);
 assert.equal(a.doc.querySelectorAll('.day').length,0);
 assert.ok(a.doc.querySelector('#auth'));
-console.log('PASS: two browser contexts share dinner/names/custom wording; customization survives reload, escapes HTML, cancels drafts and restores defaults; exactly two schedule columns; week isolation; unapproved account blocked; sign-out removes planner.');
-for(const d of [a,b,outsider])d.close();
+console.log('PASS: two browser contexts share dinner/names/custom wording; customization survives reload, escapes HTML, cancels drafts and restores defaults; exactly two schedule columns; week isolation; unapproved account blocked; viewer sees live updates without editing; sign-out removes planner.');
+for(const d of [a,b,outsider,reader])d.close();

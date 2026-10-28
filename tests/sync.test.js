@@ -74,3 +74,17 @@ test('stopped sessions do not apply responses after signing out', async () => {
   a.engine.stop(); release(); await tick;
   assert.equal(applied, initial);
 });
+
+test('read-only sync discards stored pending writes and never queues or sends edits', async () => {
+  const persistent=storage();
+  persistent.setItem('test',JSON.stringify({pending:[{id:'dinner',value:'Old unsent edit'}]}));
+  let writes=0;
+  const a=fixture(new Map([['dinner',{id:'dinner',value:'Current dinner'}]]),{
+    storage:persistent,readOnly:true,write:async()=>{writes++;},
+  });
+  a.engine.set('dinner','Forged edit');
+  await a.engine.tick();
+  assert.equal(writes,0);
+  assert.equal(a.engine.pending.size,0);
+  assert.equal(a.rows[0].value,'Current dinner');
+});

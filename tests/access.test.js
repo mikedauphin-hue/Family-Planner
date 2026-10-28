@@ -54,4 +54,36 @@ await db.query('update planner_notification_deliveries set sent_at=now()');
 assert.equal(await claim(),false);
 await db.exec('reset role');
 console.log('PASS: push endpoints are server-only; clients cannot claim deliveries; repeated cron calls deduplicate, expired leases retry, accepted deliveries stay sent.');
+// Add the third account as a viewer without changing either existing editor.
+const viewerSQL=readFileSync(new URL('../supabase/add-viewer.sql',import.meta.url),'utf8');
+await assert.rejects(db.exec(viewerSQL), /Create and confirm the viewer/);await db.exec('rollback');
+await assert.rejects(db.exec(viewerSQL.replace('REPLACE-VIEWER@example.com','person0@example.com')), /existing editor/);await db.exec('rollback');
+const approvedViewer=viewerSQL.replace('REPLACE-VIEWER@example.com','person2@example.com');
+await db.exec(approvedViewer);await db.exec(approvedViewer);
+assert.equal((await db.query('select count(*)::int as n from planner_members')).rows[0].n,2);
+assert.equal((await db.query('select count(*)::int as n from planner_viewers')).rows[0].n,1);
+await db.exec('set role authenticated');
+await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids[2]]);
+assert.equal((await db.query('select value from planner_entries')).rows[0].value,'Pizza');
+assert.equal((await db.query("update planner_entries set value='Viewer edit' returning *")).rows.length,0);
+await assert.rejects(db.query("insert into planner_entries values ('viewer-insert','bad')"), /row-level security/);
+await assert.rejects(db.query("insert into planner_entries values ('2026-10-26/0/dinner','bad') on conflict (id) do update set value=excluded.value"), /row-level security/);
+await assert.rejects(db.query('delete from planner_entries'), /permission denied/);
+await assert.rejects(db.query('insert into planner_members values ($1)',[ids[2]]), /permission denied/);
+await assert.rejects(db.query('insert into planner_viewers values ($1)',[ids[0]]), /permission denied/);
+await assert.rejects(db.query('update planner_viewers set user_id=$1',[ids[0]]), /permission denied/);
+// Both editors retain writes after the additive migration.
+for (const id of ids.slice(0,2)) {
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]);
+  assert.equal((await db.query("update planner_entries set value='Still editable' returning *")).rows.length,1);
+}
+await db.exec('reset role; set role anon');
+await assert.rejects(db.query('select * from planner_entries'), /permission denied/);
+await db.exec('reset role');
+await db.query('delete from planner_viewers where user_id=$1',[ids[2]]);
+await db.exec('set role authenticated');
+await db.query("select set_config('request.jwt.claim.sub',$1,false)",[ids[2]]);
+assert.equal((await db.query('select * from planner_entries')).rows.length,0);
+await db.exec('reset role');
+console.log('PASS: viewer migration is additive/repeatable; existing editors protected; viewer reads but cannot insert/update/upsert/delete/escalate; public remains blocked; revocation removes access.');
 await db.close();
