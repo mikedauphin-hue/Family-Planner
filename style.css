@@ -15,3 +15,5 @@
 .rides .section-title{margin-bottom:5px}.rides input{display:block}
 
 .viewer-notice{font-size:13px;line-height:1.6;color:#694280;background:#f0e5fa;padding:12px 16px;border-radius:8px;margin:0 0 18px}[data-id][readonly]{cursor:default}[data-id][readonly]:hover{background:transparent}[hidden]{display:none!important}
+
+.rides select{display:block;width:100%;font:inherit;font-size:11px;line-height:1.6;color:#51405e;background:#fffdfd;border:1px solid #decee9;border-radius:4px;padding:6px 3px;margin:4px 0 7px;min-width:0;cursor:pointer}.rides select:focus{outline:2px solid #ae82d1;outline-offset:1px}.rides select:hover{background:#f7f0fb}@media(min-width:1500px){.rides select{font-size:12px}}

@@ -55,6 +55,22 @@ a.doc.querySelector('#name-0').value='Alex';a.doc.querySelector('#name-1').value
 a.doc.querySelector('#family-form').dispatchEvent(new a.w.Event('submit',{cancelable:true}));
 await wait(550);await b.poll();
 assert.equal(b.doc.querySelector('[data-name="0"]').textContent,'Alex');
+const pickup=a.doc.querySelector('[aria-label="Monday pickup"]');
+assert.equal(pickup.tagName,'SELECT');
+assert.deepEqual([...pickup.options].map(option=>option.value),['','Alex','Jamie']);
+pickup.value='Jamie';pickup.dispatchEvent(new a.w.Event('change'));
+await wait(550);await b.poll();await reader.poll();
+assert.equal(b.doc.querySelector('[aria-label="Monday pickup"]').value,'Jamie');
+assert.equal(reader.doc.querySelector('[aria-label="Monday pickup"]').value,'Jamie');
+assert.equal(reader.doc.querySelector('[aria-label="Monday pickup"]').readOnly,true);
+// Historical free-text assignments remain visible until explicitly replaced.
+database.set(pickup.dataset.id,{id:pickup.dataset.id,value:'Grandma'});
+await a.poll();
+assert.equal(pickup.value,'Grandma');
+assert.equal(pickup.selectedOptions[0].disabled,true);
+pickup.value='';pickup.dispatchEvent(new a.w.Event('change'));
+await wait(550);await b.poll();
+assert.equal(b.doc.querySelector('[aria-label="Monday pickup"]').value,'');
 // Custom wording saves globally, survives week changes, and reaches the other device.
 a.doc.querySelector('#customize').click();
 assert.ok(a.doc.querySelector('#customize-dialog').open);

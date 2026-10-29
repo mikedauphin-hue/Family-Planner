@@ -52,7 +52,11 @@ function applyRows(values) {
   rows = new Map(values.map(row => [row.id, row.value]));
   // Never replace the active input while someone is typing.
   document.querySelectorAll('[data-id]').forEach(input => {
-    if (document.activeElement !== input) input.value = get(input.dataset.id);
+    if (document.activeElement !== input) {
+      const value = get(input.dataset.id);
+      if (input.tagName === 'SELECT') input.innerHTML = rideOptions(value, input.dataset.ridePlaceholder);
+      input.value = value;
+    }
   });
   document.querySelectorAll('[data-name]').forEach(el => { el.textContent = names()[Number(el.dataset.name)]; });
   updateCopy();
@@ -134,8 +138,17 @@ function gate(message = '') {
   document.querySelector('#auth').onsubmit = e => { e.preventDefault(); auth(); };
   document.querySelector('#email').focus();
 }
+function rideOptions(value, placeholder) {
+  const choices = [...new Set(names())];
+  // Keep existing assignments visible, even if entered before the dropdown existed.
+  const previous = value && !choices.includes(value) ? `<option value="${esc(value)}" selected disabled>${esc(value)}</option>` : '';
+  return `<option value=""${value ? '' : ' selected'}>${esc(placeholder)}</option>${choices.map(name => `<option value="${esc(name)}"${name === value ? ' selected' : ''}>${esc(name)}</option>`).join('')}${previous}`;
+}
 function input(day, field, person, placeholder, label, textarea = false) {
   const id = rowId(day, field, person);
+  if (canEdit && ['pickup', 'dropoff'].includes(field)) {
+    return `<select data-id="${esc(id)}" data-ride-placeholder="${esc(placeholder)}" aria-label="${esc(label)}">${rideOptions(get(id), placeholder)}</select>`;
+  }
   if (!canEdit) placeholder = field === 'schedule' ? 'No plans added' : field === 'dinner' ? 'Not planned yet' : 'Not assigned';
   const attrs = `maxlength="20000" ${canEdit ? '' : 'readonly'} data-id="${esc(id)}" placeholder="${esc(placeholder)}" aria-label="${esc(label)}"`;
   return textarea ? `<textarea rows="${field === 'dinner' ? 4 : 2}" ${attrs}>${esc(get(id))}</textarea>` : `<input ${attrs} value="${esc(get(id))}">`;
@@ -182,7 +195,7 @@ function render() {
     customizeDialog.close();
   };
 
-  document.querySelectorAll('[data-id]').forEach(el => el.addEventListener('input', () => set(el.dataset.id, el.value)));
+  document.querySelectorAll('[data-id]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => set(el.dataset.id, el.value)));
   const dialog = document.querySelector('dialog');
   document.querySelector('#members').onclick = () => dialog.showModal();
   document.querySelector('#cancel').onclick = () => dialog.close();
